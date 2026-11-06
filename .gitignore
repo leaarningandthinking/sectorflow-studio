@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+desktop.ini
+data/
+music/
+output/
+参考资料/
+.env
+.env.*
+!.env.example
+*.log
+MANIFEST.sha256

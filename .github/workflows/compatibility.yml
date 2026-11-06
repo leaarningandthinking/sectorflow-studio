@@ -1,0 +1,45 @@
+name: macOS and Windows compatibility
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install FFmpeg on macOS
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      - name: Install FFmpeg on Windows
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg --yes --no-progress
+      - name: Install Python dependencies and Chromium
+        run: |
+          python -m pip install -r requirements.txt
+          python -m playwright install chromium
+      - name: Check previews, covers and complete video export
+        run: python tests/smoke_release.py
+      - name: Save test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-check-${{ matrix.os }}
+          path: output/test-artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
