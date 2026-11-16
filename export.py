@@ -2,6 +2,7 @@ import argparse
 import base64
 import json
 import re
+import sys
 from pathlib import Path
 import shutil
 import subprocess
@@ -46,8 +47,13 @@ def export(date='2026-10-20', duration=60, kind='cover', port=8765, fps=30,
     html = html.replace('assets/fonts/SourceHanSansSC-VF.woff2',
                         'data:font/woff2;base64,' + base64.b64encode(font.read_bytes()).decode('ascii'))
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=['--no-sandbox'], **(
-            {'executable_path': '/usr/bin/chromium'} if Path('/usr/bin/chromium').exists() else {}))
+        try:
+            browser = p.chromium.launch(headless=True, args=['--no-sandbox'], **(
+                {'executable_path': '/usr/bin/chromium'} if Path('/usr/bin/chromium').exists() else {}))
+        except Exception as error:
+            if "Executable doesn't exist" in str(error):
+                raise RuntimeError('视频渲染组件缺失，请重新运行项目中的“安装并启动”修复环境后再导出。') from None
+            raise
         try:
             page = browser.new_page(viewport={'width': 1100, 'height': 1940}, device_scale_factor=1)
             page.set_content(html)
@@ -118,5 +124,9 @@ if __name__ == '__main__':
     parser.add_argument('--category', choices=['industry','concept'], default='industry')
     parser.add_argument('--source', choices=['top','legacy'], default='top')
     args = parser.parse_args()
-    export(args.date, args.duration, args.type, args.port, args.fps,
-           args.music, args.volume, args.music_start, args.snapshot, args.mode, args.category, args.source)
+    try:
+        export(args.date, args.duration, args.type, args.port, args.fps,
+               args.music, args.volume, args.music_start, args.snapshot, args.mode, args.category, args.source)
+    except Exception as error:
+        print(str(error), file=sys.stderr)
+        raise SystemExit(1)

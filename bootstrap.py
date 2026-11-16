@@ -45,8 +45,8 @@ def runtime_ready():
         return False
     result = subprocess.run(
         [str(PYTHON), '-c', 'import playwright; from playwright.sync_api import sync_playwright; '
-         'from pathlib import Path; p=sync_playwright().start(); '
-         'ok=Path(p.chromium.executable_path).is_file(); p.stop(); raise SystemExit(0 if ok else 1)'],
+         'p=sync_playwright().start(); browser=p.chromium.launch(headless=True); '
+         'browser.close(); p.stop()'],
         cwd=ROOT, capture_output=True)
     return result.returncode == 0
 

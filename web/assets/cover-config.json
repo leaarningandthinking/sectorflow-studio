@@ -1,0 +1,18 @@
+{
+  "source_filename": "微信图片_20261110160125_239_10.jpg",
+  "source_sha256": "a6bd3c800ce8555096abce96fbe41c775596ebf0da60d325ba0ea76dce8ca3a7",
+  "asset_revision": "20261110",
+  "date_policy": "Shanghai today or selected date; only date is rendered dynamically using Source Han Sans SC",
+  "source_text_policy": "title and source lines are preserved in artwork, not rendered twice",
+  "formats": {
+    "portrait34": {
+      "asset": "cover-background.png",
+      "sha256": "e294a5c84af7a6b71183202949bd9761d08f8c53b31a51eb811db4eb056984ef"
+    },
+    "portrait916": {
+      "asset": "cover-background-vertical.png",
+      "sha256": "ac9eac4db702fb22cb5a1e3e7f128bbd1ebbbefab54091cbe686683fd86b43ab"
+    }
+  },
+  "export_limit_bytes": 500000
+}

@@ -1,5 +1,6 @@
 """Cross-platform release smoke check; uses demo data and an isolated copy."""
 import array
+import importlib.util
 import json
 import math
 import os
@@ -18,6 +19,8 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ROOT / 'output' / 'test-artifacts'
 DATE = '2026-11-06'
+OUTRO_SECONDS = float(json.loads((ROOT / 'web/assets/outro-config.json').read_text(encoding='utf8'))['duration'])
+EXPORT_SECONDS = 4 + OUTRO_SECONDS
 
 
 def run(args, **kwargs):
@@ -39,6 +42,29 @@ def audio_rms(path, start, duration):
     return math.sqrt(sum(value * value for value in samples) / len(samples))
 
 
+def check_missing_headless_runtime(project):
+    spec = importlib.util.spec_from_file_location('release_bootstrap', project / 'bootstrap.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.PYTHON = Path(sys.executable)
+    with tempfile.TemporaryDirectory(prefix='sectorflow browser check ') as directory:
+        old = os.environ.get('PLAYWRIGHT_BROWSERS_PATH')
+        try:
+            os.environ['PLAYWRIGHT_BROWSERS_PATH'] = directory
+            with sync_playwright() as playwright:
+                full_browser = Path(playwright.chromium.executable_path)
+            full_browser.parent.mkdir(parents=True, exist_ok=True)
+            full_browser.touch()
+            # A full-browser path exists, but the headless component is absent.
+            assert not module.runtime_ready(), 'Startup accepted a missing export browser'
+        finally:
+            if old is None:
+                os.environ.pop('PLAYWRIGHT_BROWSERS_PATH', None)
+            else:
+                os.environ['PLAYWRIGHT_BROWSERS_PATH'] = old
+    print('PASS startup detects missing headless component even if full-browser file exists', flush=True)
+
+
 def browser_checks(base_url):
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
@@ -49,6 +75,8 @@ def browser_checks(base_url):
                    else route.abort())
         try:
             page.goto(base_url, wait_until='domcontentloaded')
+            assert page.locator('#duration').input_value() == '23'
+            page.wait_for_function('window.sectorFlow && window.sectorFlow.endingDuration === 8')
             page.click('#cover-tab')
             page.wait_for_function('window.sectorCover?.ready()')
             font = page.evaluate('''async () => {
@@ -94,6 +122,19 @@ def browser_checks(base_url):
                 assert series and all(style == 'solid' for style in series), series
                 page.locator('#stage').screenshot(path=str(ARTIFACTS / f'{category}.png'))
                 print(f'PASS {category}: demo API and solid-line chart', flush=True)
+            page.route('**/api/export', lambda route: route.fulfill(
+                status=500, content_type='application/json',
+                body=json.dumps({'error': '测试渲染组件缺失提示'}, ensure_ascii=False)))
+            page.uncheck('#music-enabled')
+            page.click('#video')
+            page.wait_for_function('document.querySelector("#export-feedback").dataset.state === "error"')
+            assert page.locator('#export-feedback').is_visible()
+            assert page.locator('#export-feedback').get_attribute('role') == 'alert'
+            assert '测试渲染组件缺失提示' in page.locator('#export-feedback').inner_text()
+            assert page.locator('#video').is_enabled()
+            assert page.locator('#video').inner_text() == '↓ 导出视频'
+            print('PASS visible export failure feedback and button recovery', flush=True)
+
         except Exception:
             page.screenshot(path=str(ARTIFACTS / 'browser-failure.png'), full_page=True)
             raise
@@ -109,6 +150,7 @@ def main():
         for path in ROOT.glob('*.py'):
             shutil.copy2(path, project / path.name)
         shutil.copytree(ROOT / 'web', project / 'web')
+        check_missing_headless_runtime(project)
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
             port = sock.getsockname()[1]
@@ -140,15 +182,15 @@ def main():
                     cwd=project, env=environment, timeout=300)
                 video = project / 'output' / f'{DATE}_top_fund_flow.mp4'
                 info = metadata(video)
-                assert abs(float(info['format']['duration']) - 9) < .15, info['format']['duration']
+                assert abs(float(info['format']['duration']) - EXPORT_SECONDS) < .15, info['format']['duration']
                 assert any(s['codec_type'] == 'audio' for s in info['streams'])
                 visual = next(s for s in info['streams'] if s['codec_type'] == 'video')
                 assert (visual['width'], visual['height']) == (1080, 1920)
                 late_rms = audio_rms(video, 6, .4)
                 assert late_rms > .005, late_rms
-                assert audio_rms(video, 8.8, .15) < late_rms * .3
+                assert audio_rms(video, EXPORT_SECONDS-.2, .15) < late_rms * .3
                 shutil.copy2(video, ARTIFACTS / 'smoke-video.mp4')
-                print('PASS video: 9 seconds, 1080x1920, music continues into outro and fades out', flush=True)
+                print(f'PASS video: {EXPORT_SECONDS:g} seconds, 1080x1920, music continues into outro and fades out', flush=True)
             finally:
                 server.terminate()
                 try:

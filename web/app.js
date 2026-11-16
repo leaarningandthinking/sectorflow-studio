@@ -4,7 +4,7 @@ const lastFrame=()=>Math.max(1,(data?.times.length||241)-1);
 const fmt=v=>Number.isFinite(v)?`${v>0?'+':''}${Number(v).toFixed(2)}亿`:'—';
 function money(id,v){const e=$(id);e.textContent=fmt(v);e.style.color=!Number.isFinite(v)?'#9eb7d0':v<0?'#14dfad':'#ff597a';if(id==='total')e.style.fontSize='64px'}
 const outroVideo=$('outro-video');
-const CLOSE_HOLD_SECONDS=1,CUSTOM_OUTRO_SECONDS=5;
+const CLOSE_HOLD_SECONDS=1,CUSTOM_OUTRO_SECONDS=7;
 let outroActive=false;
 function brandDuration(){return CUSTOM_OUTRO_SECONDS}
 function endingDuration(){return CLOSE_HOLD_SECONDS+CUSTOM_OUTRO_SECONDS}
@@ -150,7 +150,7 @@ async function load(refresh=false){
  }catch(e){data=null;$('status').textContent='加载失败：'+e.message;$('data-health').textContent='未加载有效数据。可点击“获取／重新获取接口数据”重试。';}
  finally{loading=false;updateEnabled()}
 }
-function totalDuration(){return Math.min(186,Math.max(9,Math.round(Number($('duration').value)||21)))}
+function totalDuration(){return Math.min(188,Math.max(11,Math.round(Number($('duration').value)||23)))}
 function replayDuration(){return totalDuration()-endingDuration()}
 function clockText(seconds){const s=Math.max(0,Math.round(seconds));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
 function updatePreviewPhase(t=0,duration=replayDuration()){
@@ -206,19 +206,24 @@ function runPlayback(from,duration){
 async function play(){if(playing){stop();return}try{await prepareOutro();const duration=replayDuration(),from=idx>=lastFrame()?0:idx/lastFrame()*duration;runPlayback(from,duration)}catch(e){$('status').textContent='片尾视频加载失败，请刷新后重试'}}
 async function previewEnding(){stop();try{await prepareOutro();const duration=replayDuration();setTimeline(duration,duration);runPlayback(duration,duration)}catch(e){$('status').textContent='片尾视频加载失败，请刷新后重试'}}
 let exporting=false;
+function exportFeedback(message,state='pending'){
+ const box=$('export-feedback');box.textContent=message;box.dataset.state=state;box.hidden=false;box.setAttribute('role',state==='error'?'alert':'status');
+ $('status').textContent=message;fitPreview();
+}
 async function exportFile(type){
  if(exporting||!data)return;
  if(type==='video' && $('music-enabled').checked && !selectedMusic){showMusicError();return}
  stop();exporting=true;updateEnabled();
- $('status').textContent='正在生成'+(type==='video'?'视频':'封面')+'…';
+ const button=$(type==='video'?'video':'cover'),originalLabel=button.textContent;button.textContent='正在生成…';
+ exportFeedback('正在生成'+(type==='video'?'视频，请稍候，完成后会自动下载。':'截图，请稍候。'));
  try{
   const music=type==='video'?await prepareMusic():null;
   const r=await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({music,date:data.date,category:data.meta?.category||'industry',source:data.meta?.source_key||'legacy',mode:data.mock?'demo':'api',dataset_version:data.meta?.dataset_version,duration:replayDuration(),type})});
   const result=await r.json();if(!r.ok)throw Error(result.error||'导出失败');
-  $('status').textContent='导出完成：'+result.filename;
+  exportFeedback('导出完成：'+result.filename,'success');
   const a=document.createElement('a');a.href=result.url;a.download=result.filename;document.body.appendChild(a);a.click();a.remove();
- }catch(e){$('status').textContent='导出失败：'+e.message}
- finally{exporting=false;updateEnabled()}
+ }catch(e){exportFeedback('导出失败：'+e.message,'error')}
+ finally{button.textContent=originalLabel;exporting=false;updateEnabled()}
 }
 function applyDataPresentation(){
  const mock=data.mock!==false,meta=data.meta||{},market=meta.market_range||[data.times[0],data.times.at(-1)],industry=meta.sector_range||meta.industry_range||[data.times[0],data.times.at(-1)],rank=meta.rank_as_of||industry[1],scope=meta.rank_universe_count||10;

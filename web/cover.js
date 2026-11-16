@@ -6,10 +6,15 @@
  const font='"SectorFlow Sans", sans-serif';
  const formats={portrait34:{width:1200,height:1600,label:'1200 × 1600 · 3:4'},portrait916:{width:1080,height:1920,label:'1080 × 1920 · 9:16'}};
  let automatic=true,renderSequence=0,rendered=false,exporting=false,activeTab='video';
- const image=new Image();
- const imageReady=new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error('封面底图加载失败，请刷新后重试。'));});
- // Keep the rejection handled even if a user stays in the video workspace.
- imageReady.catch(()=>{});image.src='assets/cover-background.png';
+ const backgrounds=new Map();
+ function backgroundFor(vertical){
+  const file=vertical?'cover-background-vertical.png':'cover-background.png';
+  if(!backgrounds.has(file)){
+   const image=new Image(),promise=new Promise((resolve,reject)=>{image.onload=()=>resolve(image);image.onerror=()=>{backgrounds.delete(file);reject(Error('封面底图加载失败，请刷新后重试。'));}});
+   backgrounds.set(file,promise);image.src='assets/'+file+'?rev=20261110';
+  }
+  return backgrounds.get(file);
+ }
  function today(){
   const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
   const value=type=>parts.find(part=>part.type===type).value;
@@ -27,7 +32,7 @@
   el('cover-today').hidden=automatic;
   el('cover-file-name').textContent=validDate(dateInput.value)?filename():'请选择封面日期';
   el('cover-format-badge').textContent=formats[formatInput.value].label;
-  el('cover-safe-note').textContent=formatInput.value==='portrait916'?'竖版文字已避开顶部、底部各220px安全区。':'参考图同款3:4比例，日期、标题与内容来源独立排版。';
+  el('cover-safe-note').textContent=formatInput.value==='portrait916'?'9:16专用蓝色封面，完整保留标题和内容来源。':'新款蓝色封面，日期随所选日期自动更新。';
   for(const id of ['cover-date','cover-format','cover-sync-date','cover-today'])el(id).disabled=exporting;
   exportButton.disabled=exporting||!rendered||!validDate(dateInput.value);
   exportButton.textContent=exporting?'正在导出…':'↓ 导出封面';
@@ -74,18 +79,14 @@
   if(!validDate(dateInput.value)){showError('请选择有效的封面日期。');el('cover-status').textContent='等待选择日期';return false;}
   showError('');el('cover-status').textContent='正在生成封面预览…';
   try{
-   await imageReady;await document.fonts.load('800 60px "SectorFlow Sans"');await document.fonts.ready;if(sequence!==renderSequence)return false;
+   const vertical=formatInput.value==='portrait916',image=await backgroundFor(vertical);
+   await document.fonts.load('900 60px "SectorFlow Sans"');await document.fonts.ready;if(sequence!==renderSequence)return false;
    const {width,height}=formats[formatInput.value];canvas.width=width;canvas.height=height;
-   const scale=Math.max(width/image.naturalWidth,height/image.naturalHeight),dw=image.naturalWidth*scale,dh=image.naturalHeight*scale;
-   context.drawImage(image,(width-dw)/2,(height-dh)/2,dw,dh);
-   const [,month,day]=dateInput.value.split('-'),dateText=`${Number(month)}月${day}日`,vertical=height===1920;
-   const margin=vertical?88:105,maxWidth=width-margin*2;
-   text(dateText,width/2,vertical?775:640,vertical?190:210,800,'#ffc400',maxWidth,'center',true);
-   text('主力资金流向',width/2,vertical?1000:875,vertical?138:152,750,'#ffffff',maxWidth,'center',true);
-   const lineY=vertical?1520:1338;
-   context.save();context.strokeStyle='#e8edf4';context.lineWidth=3;context.beginPath();context.moveTo(margin,lineY);context.lineTo(width-margin,lineY);context.stroke();context.restore();
-   text('内容来源：',margin,lineY+76,vertical?32:36,400,'#ffffff',maxWidth);
-   text('数据来源于财信证券APP，部分素材取自千库网',margin,lineY+132,vertical?32:36,400,'#ffffff',maxWidth);
+   const scale=Math.max(width/image.naturalWidth,height/image.naturalHeight),dw=image.naturalWidth*scale,dh=image.naturalHeight*scale,ox=(width-dw)/2,oy=(height-dh)/2;
+   context.drawImage(image,ox,oy,dw,dh);
+   const [,month,day]=dateInput.value.split('-'),dateText=`${Number(month)}月${day}日`;
+   // Artwork already contains title and source. Only the date is rendered dynamically.
+   text(dateText,ox+dw*.089,oy+dh*(vertical ? .383 : .340),dw*.1255,'italic 900','#0b40b6',dw*.82);
    canvas.setAttribute('aria-label',`${dateText}主力资金流向视频封面，${formats[formatInput.value].label}`);
    rendered=true;updateState();fit();el('cover-status').textContent=`封面已就绪 · ${dateInput.value}`;return true;
   }catch(error){if(sequence===renderSequence){showError(error.message);el('cover-status').textContent='封面生成失败';updateState();}return false;}
