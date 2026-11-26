@@ -34,7 +34,10 @@ jobs:
           python -m pip install -r requirements.txt
           python -m playwright install chromium
       - name: Check previews, covers and complete video export
-        run: python tests/smoke_release.py
+        run: |
+          python tests/smoke_release.py
+          python tests/cover_templates.py
+          python tests/compact_template.py
       - name: Save test artifacts
         if: always()
         uses: actions/upload-artifact@v4

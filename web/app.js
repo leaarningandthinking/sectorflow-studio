@@ -4,10 +4,31 @@ const lastFrame=()=>Math.max(1,(data?.times.length||241)-1);
 const fmt=v=>Number.isFinite(v)?`${v>0?'+':''}${Number(v).toFixed(2)}亿`:'—';
 function money(id,v){const e=$(id);e.textContent=fmt(v);e.style.color=!Number.isFinite(v)?'#9eb7d0':v<0?'#14dfad':'#ff597a';if(id==='total')e.style.fontSize='64px'}
 const outroVideo=$('outro-video');
-const CLOSE_HOLD_SECONDS=1,CUSTOM_OUTRO_SECONDS=7;
-let outroActive=false;
+const CUSTOM_OUTRO_SECONDS=7;
+const EXTRA_CLOSE_HOLD_SECONDS=1;
+const closeHoldSeconds=()=>Number(((videoTemplate()==='compact'?.3:1)+EXTRA_CLOSE_HOLD_SECONDS).toFixed(1));
+let outroActive=false,labelExpansion=1,restartTemplatePreview=false;
+const videoTemplate=()=>$('video-template').value;
+function labelExpansionAt(t,duration){
+ if(videoTemplate()!=='compact')return 1;
+ // Finish opening at the close, keep the complete labels visible through the additional one-second freeze.
+ const u=Math.max(0,Math.min(1,(t-(duration-.2))/.2));
+ return u*u*(3-2*u);
+}
+$('video-template').value=window.__sectorFlowTemplate||'standard';
+$('video-template').addEventListener('change',()=>{
+ stop();$('template-note').textContent=videoTemplate()==='compact'?'密集标签允许叠放，收盘完整金额显示0.3秒，再定格1秒后播放片尾。':'标签完整避让，收盘画面再定格1秒后播放片尾。';
+ $('duration').max=videoTemplate()==='compact'?188:189;$('duration').value=totalDuration();updateDurationNote();
+ restartTemplatePreview=true;
+ if(data){
+  const duration=replayDuration();
+  const sample=videoTemplate()==='compact'&&idx/lastFrame()*duration>=duration-.2?Math.floor(lastFrame()*.65):idx;
+  render(sample);updatePreviewPhase(sample/lastFrame()*duration,duration);
+  $('status').textContent=videoTemplate()==='compact'?'已切换行情视频-紧凑，当前展示紧凑标签；点击播放将从头预览。':'已切换行情视频，点击播放将从头预览。';
+ }
+});
 function brandDuration(){return CUSTOM_OUTRO_SECONDS}
-function endingDuration(){return CLOSE_HOLD_SECONDS+CUSTOM_OUTRO_SECONDS}
+function endingDuration(){return closeHoldSeconds()+CUSTOM_OUTRO_SECONDS}
 async function prepareOutro(){
  if(outroVideo.readyState>=2)return;
  await new Promise((resolve,reject)=>{const clear=()=>{clearTimeout(timeout);outroVideo.removeEventListener('loadeddata',done);outroVideo.removeEventListener('error',fail)};const done=()=>{clear();resolve()},fail=()=>{clear();reject(Error('片尾视频加载失败'))};const timeout=setTimeout(()=>{clear();reject(Error('片尾视频加载超时'))},15000);outroVideo.addEventListener('loadeddata',done,{once:true});outroVideo.addEventListener('error',fail,{once:true});outroVideo.load()});
@@ -91,7 +112,7 @@ function labelGutter(){
  gutterDataset=data;gutterWidth=Math.ceil(rightExtent+8);return gutterWidth;
 }
 function endpointLabels(){
- const top=CHART_GRID.top+20,bottom=chart.getHeight()-CHART_GRID.bottom-20,gap=36;
+ const top=CHART_GRID.top+20,bottom=chart.getHeight()-CHART_GRID.bottom-20,gap=14+22*labelExpansion;
  const items=chartIndustries().map((s,i)=>{
   if(!Number.isFinite(s.values[idx]))return null;
   const [x,y]=chart.convertToPixel({xAxisIndex:0,yAxisIndex:0},[idx,s.values[idx]]);
@@ -101,12 +122,12 @@ function endpointLabels(){
  return items.flatMap(({s,i,x,y,labelY})=>[
   {id:'link-'+i,type:'polyline',silent:true,z:8,shape:{points:[[x,y],[x+6,y],[x+10,labelY]]},style:{stroke:lineColor(s,i),lineWidth:1.25,opacity:.9,fill:null}},
   {id:'dot-'+i,type:'circle',silent:true,z:12,shape:{cx:x,cy:y,r:3.5},style:{fill:lineColor(s,i)}},
-  {id:'label-'+i,type:'text',silent:true,z:10,x:x+LABEL_OFFSET,y:labelY,style:endpointLabelStyle(s,s.values[idx])}
+  {id:'label-'+i,type:'text',silent:true,z:10+i/100,x:x+LABEL_OFFSET,y:labelY,style:{...endpointLabelStyle(s,s.values[idx]),borderColor:lineColor(s,i),borderWidth:1-labelExpansion}}
  ]);
 }
-function render(i,reset=true){
+function render(i,reset=true,expansion=null){
  if(!data)return;
- idx=Math.max(0,Math.min(lastFrame(),Math.round(i)));if(reset)resetEnding();
+ idx=Math.max(0,Math.min(lastFrame(),Math.round(i)));labelExpansion=expansion??labelExpansionAt(idx/lastFrame()*replayDuration(),replayDuration());if(reset)resetEnding();
  $('scrub').value=idx;$('time').textContent=data.times[idx];$('progress').style.width=(idx/lastFrame()*100)+'%';
  let marketIndex=idx;
  const marketTime=data.meta?.market_asof?.[idx];
@@ -121,7 +142,7 @@ function render(i,reset=true){
 }
 function updateEnabled(){
  const busy=loading||exporting;
- for(const id of ['date','data-mode-select','source-select','category-select','fetch-data','duration','music-enabled','music-file','music-clear','music-start','music-volume'])$(id).disabled=busy;
+ for(const id of ['video-template','date','data-mode-select','source-select','category-select','fetch-data','duration','music-enabled','music-file','music-clear','music-start','music-volume'])$(id).disabled=busy;
  for(const id of ['play','cover','video','preview-ending','scrub'])$(id).disabled=busy||!data;
  $('music-controls').disabled=busy||!$('music-enabled').checked;
  $('music-start').disabled=busy||!selectedMusic||!$('music-enabled').checked;$('music-volume').disabled=busy||!selectedMusic||!$('music-enabled').checked;
@@ -147,20 +168,21 @@ async function load(refresh=false){
   data=result;const [,m,day]=date.split('-');$('headline').innerHTML=`<span class="headline-date">${+m}月${+day}日</span><span class="headline-subject">主力资金流向</span>`;
   $('scrub').max=lastFrame();render(lastFrame());applyDataPresentation();
   $('status').textContent=`已加载 ${date} · ${data.mock?'模拟演示':'接口数据'}`;
+  window.dispatchEvent(new CustomEvent('sectorflow-data-updated',{detail:{date:data.date,source:data.meta?.source_key||'legacy',mock:data.mock!==false}}));
  }catch(e){data=null;$('status').textContent='加载失败：'+e.message;$('data-health').textContent='未加载有效数据。可点击“获取／重新获取接口数据”重试。';}
  finally{loading=false;updateEnabled()}
 }
-function totalDuration(){return Math.min(188,Math.max(11,Math.round(Number($('duration').value)||23)))}
-function replayDuration(){return totalDuration()-endingDuration()}
+function totalDuration(){return Math.min(videoTemplate()==='compact'?188:189,Math.max(12,Math.round(Number($('duration').value)||24)))}
+function replayDuration(){return Number((totalDuration()-endingDuration()).toFixed(3))}
 function clockText(seconds){const s=Math.max(0,Math.round(seconds));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
 function updatePreviewPhase(t=0,duration=replayDuration()){
- const phase=t<duration?'行情回放':t<duration+CLOSE_HOLD_SECONDS?'收盘停留':'视频片尾';
+ const phase=t<duration?(videoTemplate()==='compact'?'紧凑标签回放':'行情回放'):t<duration+closeHoldSeconds()?'收盘停留':'视频片尾';
  if($('preview-phase'))$('preview-phase').textContent=phase;
  if($('preview-elapsed'))$('preview-elapsed').textContent=clockText(t);
  if($('preview-total'))$('preview-total').textContent=clockText(duration+endingDuration());
 }
 function updateDurationNote(){
- const d=replayDuration();$('export-duration-note').textContent=`行情 ${d} 秒 · 收盘停留 ${CLOSE_HOLD_SECONDS} 秒 · 视频片尾 ${CUSTOM_OUTRO_SECONDS} 秒`;
+ const d=replayDuration();$('export-duration-note').textContent=`行情 ${d} 秒 · 收盘停留 ${closeHoldSeconds()} 秒 · 视频片尾 ${CUSTOM_OUTRO_SECONDS} 秒`;
  if($('preview-total'))$('preview-total').textContent=clockText(totalDuration());
 }
 function fitPreview(){
@@ -172,12 +194,12 @@ function fitPreview(){
 }
 function setTimeline(seconds,duration=replayDuration()){
  const t=Math.max(0,seconds);updatePreviewPhase(t,duration);syncPreviewMusic(t,duration+endingDuration());
- if(t<duration){const frame=Math.min(lastFrame(),Math.round(t/duration*lastFrame()));render(frame);return 'data:'+frame}
+ if(t<duration){const frame=Math.min(lastFrame(),Math.round(t/duration*lastFrame()));const expansion=labelExpansionAt(t,duration);render(frame,true,expansion);return 'data:'+frame+':labels:'+expansion.toFixed(5)}
  // Draw the exact close without hiding and re-showing the ending layers every frame.
- if(idx!==lastFrame())render(lastFrame(),false);
- if(t<duration+CLOSE_HOLD_SECONDS){resetEnding();return 'data:'+lastFrame()}
+ if(idx!==lastFrame()||labelExpansion!==1)render(lastFrame(),false,1);
+ if(t<duration+closeHoldSeconds()){resetEnding();return 'data:'+lastFrame()}
  $('custom-ending').hidden=false;
- const elapsed=t-duration-CLOSE_HOLD_SECONDS,target=Math.max(0,Math.min(CUSTOM_OUTRO_SECONDS-1/30,elapsed));
+ const elapsed=t-duration-closeHoldSeconds(),target=Math.max(0,Math.min(CUSTOM_OUTRO_SECONDS-1/30,elapsed));
  if(!outroActive||!playing||Math.abs(outroVideo.currentTime-target)>.25)outroVideo.currentTime=target;
  outroActive=true;
  if(playing&&elapsed<CUSTOM_OUTRO_SECONDS-1/30&&outroVideo.paused)outroVideo.play().catch(()=>{$('status').textContent='片尾自动播放受限，请重新点击播放预览'});
@@ -200,10 +222,10 @@ async function setExportFrame(t,duration){
  return key;
 }
 function runPlayback(from,duration){
- playing=true;$('play').textContent='❚❚ 暂停';const started=performance.now();
+ playing=true;$('play').textContent='❚❚ 暂停';setTimeline(from,duration);const started=performance.now();
  timer=setInterval(()=>{const t=from+(performance.now()-started)/1000;setTimeline(Math.min(t,duration+endingDuration()),duration);if(t>=duration+endingDuration()){stop();setTimeline(duration+endingDuration(),duration);updatePreviewPhase(duration+endingDuration(),duration);if($('preview-phase'))$('preview-phase').textContent='预览结束'}},50);
 }
-async function play(){if(playing){stop();return}try{await prepareOutro();const duration=replayDuration(),from=idx>=lastFrame()?0:idx/lastFrame()*duration;runPlayback(from,duration)}catch(e){$('status').textContent='片尾视频加载失败，请刷新后重试'}}
+async function play(){if(playing){stop();return}try{await prepareOutro();const duration=replayDuration(),from=restartTemplatePreview||idx>=lastFrame()?0:idx/lastFrame()*duration;restartTemplatePreview=false;runPlayback(from,duration)}catch(e){$('status').textContent='片尾视频加载失败，请刷新后重试'}}
 async function previewEnding(){stop();try{await prepareOutro();const duration=replayDuration();setTimeline(duration,duration);runPlayback(duration,duration)}catch(e){$('status').textContent='片尾视频加载失败，请刷新后重试'}}
 let exporting=false;
 function exportFeedback(message,state='pending'){
@@ -218,7 +240,7 @@ async function exportFile(type){
  exportFeedback('正在生成'+(type==='video'?'视频，请稍候，完成后会自动下载。':'截图，请稍候。'));
  try{
   const music=type==='video'?await prepareMusic():null;
-  const r=await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({music,date:data.date,category:data.meta?.category||'industry',source:data.meta?.source_key||'legacy',mode:data.mock?'demo':'api',dataset_version:data.meta?.dataset_version,duration:replayDuration(),type})});
+  const r=await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({template:videoTemplate(),music,date:data.date,category:data.meta?.category||'industry',source:data.meta?.source_key||'legacy',mode:data.mock?'demo':'api',dataset_version:data.meta?.dataset_version,duration:replayDuration(),type})});
   const result=await r.json();if(!r.ok)throw Error(result.error||'导出失败');
   exportFeedback('导出完成：'+result.filename,'success');
   const a=document.createElement('a');a.href=result.url;a.download=result.filename;document.body.appendChild(a);a.click();a.remove();

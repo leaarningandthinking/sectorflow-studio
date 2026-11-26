@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ARTIFACTS = ROOT / 'output' / 'test-artifacts'
 DATE = '2026-11-06'
 OUTRO_SECONDS = float(json.loads((ROOT / 'web/assets/outro-config.json').read_text(encoding='utf8'))['duration'])
-EXPORT_SECONDS = 4 + OUTRO_SECONDS
+EXPORT_SECONDS = 5 + OUTRO_SECONDS
 
 
 def run(args, **kwargs):
@@ -75,8 +75,8 @@ def browser_checks(base_url):
                    else route.abort())
         try:
             page.goto(base_url, wait_until='domcontentloaded')
-            assert page.locator('#duration').input_value() == '23'
-            page.wait_for_function('window.sectorFlow && window.sectorFlow.endingDuration === 8')
+            assert page.locator('#duration').input_value() == '24'
+            page.wait_for_function('window.sectorFlow && window.sectorFlow.endingDuration === 9')
             page.click('#cover-tab')
             page.wait_for_function('window.sectorCover?.ready()')
             font = page.evaluate('''async () => {

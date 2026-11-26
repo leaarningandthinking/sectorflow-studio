@@ -5,6 +5,7 @@ from datetime import datetime
 import json,subprocess,sys,threading,uuid,math,re,os
 os.environ.setdefault("PYTHONUTF8", "1")
 from audio import audio_duration, MAX_MUSIC_BYTES, MUSIC_EXTENSIONS
+from cover_market import cover_market
 from data_source import load_data, fetch_data, snapshot_path, default_date, validate_category, validate_source
 ROOT=Path(__file__).resolve().parent
 LOCK=threading.Lock()
@@ -20,6 +21,11 @@ class Handler(SimpleHTTPRequestHandler):
     query=parse_qs(u.query);category=validate_category(query.get('category',['industry'])[0]);source=validate_source(query.get('source',['top'])[0]);self.sendjson(load_data(query.get('date',[default_date(category,source)])[0],query.get('mode',['api'])[0],query.get('version',[None])[0],category,source))
    except FileNotFoundError as e:self.sendjson({'error':str(e)},404)
    except Exception as e:self.sendjson({'error':str(e)},400)
+  elif u.path=='/api/cover-market':
+   try:
+    query=parse_qs(u.query);date=query.get('date',[''])[0];source=query.get('source',['top'])[0]
+    self.sendjson(cover_market(date,source))
+   except ValueError as e:self.sendjson({'error':str(e)},400)
   elif u.path=='/api/info':
    try:
     query=parse_qs(u.query);category=validate_category(query.get('category',['industry'])[0]);source=validate_source(query.get('source',['top'])[0]);self.sendjson({'defaultDate':default_date(category,source),'category':category,'source':source,'defaultSource':'top'})
@@ -87,6 +93,8 @@ class Handler(SimpleHTTPRequestHandler):
   try:
    a=json.loads(self.rfile.read(min(int(self.headers.get('Content-Length','0')),4096)));category=validate_category(a.get('category','industry'));source=validate_source(a.get('source','top'));date=a.get('date',default_date(category,source));datetime.strptime(date,'%Y-%m-%d');duration=float(a.get('duration',60));typ=a.get('type','cover')
    if typ not in ('cover','video') or not 3<=duration<=180:raise ValueError('type 或 duration 参数无效')
+   template=a.get('template','standard')
+   if template not in ('standard','compact'):raise ValueError('视频模板无效，请选择行情视频或行情视频-紧凑')
    mode=a.get('mode','api');version=a.get('dataset_version')
    if not version:raise ValueError('请先加载数据，再导出当前数据快照')
    snapshot=load_data(date,mode,version,category,source)
@@ -100,12 +108,12 @@ class Handler(SimpleHTTPRequestHandler):
     if not math.isfinite(volume) or not 0<=volume<=1 or not math.isfinite(start) or not 0<=start<audio_duration(music_path):raise ValueError('音乐音量或起播时间无效')
    if not LOCK.acquire(blocking=False):self.sendjson({'error':'已有导出任务，请稍后重试'},409);return
    try:
-    args=[sys.executable,str(ROOT/'export.py'),'--date',date,'--duration',str(duration),'--type',typ,'--category',category,'--source',source,'--snapshot',str(snapshot_path(snapshot['dataset_version']))]
+    args=[sys.executable,str(ROOT/'export.py'),'--date',date,'--duration',str(duration),'--type',typ,'--category',category,'--source',source,'--template',template,'--snapshot',str(snapshot_path(snapshot['dataset_version']))]
     if music:args+=['--music',str(music_path),'--volume',str(volume),'--music-start',str(start)]
     result=subprocess.run(args,capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=1200)
     if result.returncode:raise RuntimeError(result.stderr[-1200:] or result.stdout[-1200:])
    finally:LOCK.release()
-   name=f'{date}_'+('top_' if source=='top' else '')+('concept_' if category=='concept' else '')+('cover.png' if typ=='cover' else 'fund_flow.mp4');self.sendjson({'filename':name,'url':'/output/'+name,'dataset_version':snapshot['dataset_version']})
+   name=f'{date}_'+('top_' if source=='top' else '')+('concept_' if category=='concept' else '')+('compact_' if template=='compact' else '')+('cover.png' if typ=='cover' else 'fund_flow.mp4');self.sendjson({'filename':name,'url':'/output/'+name,'dataset_version':snapshot['dataset_version']})
   except Exception as e:self.sendjson({'error':str(e)},500)
 if __name__=='__main__':
  import argparse

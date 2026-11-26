@@ -17,7 +17,9 @@ ROOT = Path(__file__).resolve().parent
 
 
 def export(date='2026-10-20', duration=60, kind='cover', port=8765, fps=30,
-           music=None, volume=.2, music_start=0, snapshot_path=None, mode="api", category="industry", source="top"):
+           music=None, volume=.2, music_start=0, snapshot_path=None, mode="api", category="industry", source="top", template="standard"):
+    if template not in ('standard', 'compact'):
+        raise ValueError('视频模板无效，请选择行情视频或行情视频-紧凑')
     out = ROOT / 'output'
     out.mkdir(exist_ok=True)
     if kind == 'video' and not all(shutil.which(name) for name in ('ffmpeg','ffprobe')):
@@ -27,7 +29,7 @@ def export(date='2026-10-20', duration=60, kind='cover', port=8765, fps=30,
         raise ValueError('导出数据类别不匹配，请重新加载数据')
     if source not in ('top','legacy') or snapshot.get('meta',{}).get('source_key','legacy') != source:
         raise ValueError('导出数据源不匹配，请重新加载对应数据源')
-    suffix = ('_top' if source == 'top' else '') + ('_concept' if category == 'concept' else '')
+    suffix = ('_top' if source == 'top' else '') + ('_concept' if category == 'concept' else '') + ('_compact' if template == 'compact' else '')
     if snapshot.get('date') != date:
         raise ValueError('导出数据日期不匹配')
     html = (ROOT / 'web/index.html').read_text(encoding='utf8')
@@ -58,7 +60,7 @@ def export(date='2026-10-20', duration=60, kind='cover', port=8765, fps=30,
             page = browser.new_page(viewport={'width': 1100, 'height': 1940}, device_scale_factor=1)
             page.set_content(html)
             page.add_script_tag(path=str(ROOT / 'web/vendor/echarts.min.js'))
-            page.evaluate('(data)=>{window.__sectorFlowExport=true;window.__sectorFlowSnapshot=data;window.fetch=async()=>({ok:true,json:async()=>data})}', snapshot)
+            page.evaluate('([data,template])=>{window.__sectorFlowExport=true;window.__sectorFlowTemplate=template;window.__sectorFlowSnapshot=data;window.fetch=async()=>({ok:true,json:async()=>data})}', [snapshot, template])
             page.add_script_tag(content=(ROOT / 'web/app.js').read_text(encoding='utf8'))
             page.wait_for_function('window.sectorFlow && window.sectorFlow.ready()', timeout=15000)
             page.add_style_tag(content='.export-exclude{display:none!important}.workspace,.studio-main,.preview-panel,.preview-canvas{padding:0!important;margin:0!important;display:block!important;height:auto!important;min-height:0!important;border:0!important;background:transparent!important;overflow:visible!important}.controls{display:none!important}.stage-wrap{width:1080px!important;height:1920px!important;box-shadow:none!important}.stage{transform:none!important}')
@@ -70,7 +72,8 @@ def export(date='2026-10-20', duration=60, kind='cover', port=8765, fps=30,
                 dest = out / f'{date}{suffix}_cover.png'
                 stage.screenshot(path=str(dest))
             else:
-                n = round((duration + 1) * fps)
+                close_hold = page.evaluate('window.sectorFlow.endingDuration - window.sectorFlow.brandDuration()')
+                n = round((duration + close_hold) * fps)
                 dest = out / f'{date}{suffix}_fund_flow.mp4'
                 with tempfile.TemporaryDirectory(prefix='sectorflow-render-') as tmp:
                     prefix = Path(tmp) / 'chart.mp4'
@@ -112,7 +115,7 @@ def export(date='2026-10-20', duration=60, kind='cover', port=8765, fps=30,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--date', default='2026-10-20')
-    parser.add_argument('--duration', type=float, default=60, help='行情时长；另附1秒收盘停留及完整自定义片尾视频')
+    parser.add_argument('--duration', type=float, default=60, help='行情时长；标准版另附2秒、紧凑版另附1.3秒收盘停留，再播放完整片尾视频')
     parser.add_argument('--type', choices=['cover', 'video'], default='cover')
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--fps', type=int, default=30)
@@ -123,10 +126,11 @@ if __name__ == '__main__':
     parser.add_argument('--mode', choices=['api','demo'], default='api')
     parser.add_argument('--category', choices=['industry','concept'], default='industry')
     parser.add_argument('--source', choices=['top','legacy'], default='top')
+    parser.add_argument('--template', choices=['standard', 'compact'], default='standard')
     args = parser.parse_args()
     try:
         export(args.date, args.duration, args.type, args.port, args.fps,
-               args.music, args.volume, args.music_start, args.snapshot, args.mode, args.category, args.source)
+               args.music, args.volume, args.music_start, args.snapshot, args.mode, args.category, args.source, args.template)
     except Exception as error:
         print(str(error), file=sys.stderr)
         raise SystemExit(1)

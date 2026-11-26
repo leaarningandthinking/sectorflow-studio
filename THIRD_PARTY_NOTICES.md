@@ -20,7 +20,7 @@ Apache License 2.0, licenses/ECharts-LICENSE.txt and licenses/ECharts-NOTICE.txt
 
 ## Visual and brand assets
 
-web/assets/custom-outro.mp4 is the user-provided risk/brand outro, normalized to seven seconds. The two blue cover backgrounds are derived from the user-provided November 10 reference using image editing to clear the fixed date and extend the vertical layout. The selected date is rendered by the app in Source Han Sans SC. These are not licensed under the project's MIT license. Trademarks, source-material and embedded typography rights remain with their respective rightsholders. Replace with appropriately authorized material for your own use. No music uploads, raw financial API responses, exported work or personal reference folders are distributed with the release.
+web/assets/custom-outro.mp4 is the user-provided risk/brand outro, normalized to seven seconds. The legacy blue cover backgrounds are derived from the November 10 reference. The red/blue financial backgrounds added in v1.2.0 are image-edited from the user-provided November 26 references to remove foreground cards and fixed text; the application draws the date, title and source text in Source Han Sans SC. The selected date is rendered by the app in Source Han Sans SC. These are not licensed under the project's MIT license. Trademarks, source-material and embedded typography rights remain with their respective rightsholders. Replace with appropriately authorized material for your own use. No music uploads, raw financial API responses, exported work or personal reference folders are distributed with the release.
 
 ## Runtime dependencies
 
